@@ -47,3 +47,6 @@ Desktop.ini
 *.sql.bak
 backup.sql
 *_backup.sql
+
+# --- 课程资料（仅本地参考，不随项目提交） ---
+六课完整讲义.md
