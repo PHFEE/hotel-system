@@ -37,7 +37,7 @@ class LoginWindow:
         apply_theme(self.window)
 
         self._build()
-        center_window(self.window, 460, 470)
+        center_window(self.window, 460, 530)
 
     def _build(self) -> None:
         tk.Label(self.window, text="🏨 酒店服务预约管理系统", font=(FONT, 19, "bold"),
@@ -75,14 +75,37 @@ class LoginWindow:
                   fg=CS.TEXT_SECONDARY, bd=0, cursor="hand2",
                   command=self._open_change_password).pack(side="left", padx=8)
 
-        tk.Label(self.window,
-                 text="演示账号：admin/admin123 · reception/recep123 · guest01/guest123",
-                 font=(FONT, 8), bg=CS.BG_MAIN, fg=CS.TEXT_MUTED).pack(side="bottom", pady=12)
+        # 演示账号（点击即可自动填入用户名和密码）
+        demo = tk.Frame(self.window, bg=CS.BG_MAIN)
+        demo.pack(side="bottom", pady=10)
+        tk.Label(demo, text="演示账号（点击自动填入）",
+                 font=(FONT, 8), bg=CS.BG_MAIN, fg=CS.TEXT_MUTED).pack(pady=(0, 3))
+
+        for role, uname, pwd in (("管理员", "admin", "admin123"),
+                                 ("前台", "reception", "recep123"),
+                                 ("客人", "guest01", "guest123")):
+            label = tk.Label(demo,
+                             text=f"{role}：{uname} / {pwd}",
+                             font=(FONT, 9), bg=CS.BG_MAIN,
+                             fg=CS.PRIMARY, cursor="hand2")
+            label.pack(pady=1)
+            label.bind("<Enter>", lambda _e, l=label: l.config(fg=CS.PRIMARY_DARK))
+            label.bind("<Leave>", lambda _e, l=label: l.config(fg=CS.PRIMARY))
+            label.bind("<Button-1>",
+                       lambda _e, u=uname, p=pwd: self._fill_demo_account(u, p))
 
         self.window.bind("<Return>", lambda _e: self._login())
         self.username_entry.focus_set()
 
     # ------------------------------------------------------------------
+    def _fill_demo_account(self, username: str, password: str) -> None:
+        """点击演示账号时自动填入用户名和密码。"""
+        self.username_entry.delete(0, "end")
+        self.username_entry.insert(0, username)
+        self.password_entry.delete(0, "end")
+        self.password_entry.insert(0, password)
+        self.password_entry.focus_set()
+
     def _login(self) -> None:
         username = self.username_entry.get()
         password = self.password_entry.get()

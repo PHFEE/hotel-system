@@ -59,7 +59,7 @@ DB_CONFIG = load_db_config()
 
 # 界面相关常量
 APP_TITLE = "酒店服务预约管理系统"
-WINDOW_SIZE = "1000x680"
+WINDOW_SIZE = "1000x820"
 
 # 分页/列表上限，避免一次渲染过多行拖慢 Tkinter
 TABLE_MAX_ROWS = 500

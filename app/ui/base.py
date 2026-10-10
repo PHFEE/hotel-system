@@ -43,7 +43,7 @@ class BaseWindow:
         self.window = tk.Tk()
         self.window.title(f"{APP_TITLE} - {self.role_title} - {session.real_name}")
         self.window.geometry(WINDOW_SIZE)
-        self.window.minsize(960, 620)
+        self.window.minsize(960, 750)
         self.window.configure(bg=CS.BG_MAIN)
 
         apply_theme(self.window)
