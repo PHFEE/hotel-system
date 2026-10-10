@@ -1,10 +1,10 @@
 """
 本地数据库配置覆盖文件（模板）。
 
-用法：把本文件复制为 config.local.py 并改成你自己的密码。
-config.local.py 不随版本库提交，避免把口令写进代码。
+用法：把本文件复制为 config_local.py（下划线）并改成你自己的密码。
+config_local.py 不随版本库提交，避免把口令写进代码。
 
-优先级：环境变量 > config.local.py > app/config.py 里的默认值
+优先级：环境变量 > config_local.py > app/config.py 里的默认值
 
 环境变量方式（推荐，无需创建文件）：
     set HOTEL_DB_PASSWORD=你的密码

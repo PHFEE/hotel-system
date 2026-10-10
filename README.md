@@ -24,8 +24,8 @@
 pip install -r requirements.txt
 
 # 2. 配置数据库连接（二选一）
-#    方式 A：复制模板并修改密码
-copy config.local.example.py config.local.py
+#    方式 A：复制模板并修改密码（注意目标文件名是 config_local.py，下划线）
+copy config.local.example.py config_local.py
 #    方式 B：设置环境变量
 set HOTEL_DB_PASSWORD=你的密码
 
@@ -49,7 +49,17 @@ python tools/smoke_test.py            # 端到端自检
 | 前台 | `reception` | `recep123` |
 | 客人 | `guest01` | `guest123` |
 
+> 登录窗口底部列出了这三个账号，**鼠标点一下即可自动填入用户名和密码**，
+> 光标会停在密码框，直接按回车就能登录。
+>
 > 密码在数据库中存的是 `PBKDF2-HMAC-SHA256` 加盐哈希，不是明文。
+
+### 界面说明
+
+三种角色的主窗口初始尺寸为 `1000x820`，最小尺寸 `960x750`
+（定义在 `app/config.py` 的 `WINDOW_SIZE` 与 `app/ui/base.py` 的 `minsize`），
+保证客房预订页左侧表单底部的「确认预订」按钮一进入就能看到，无需手动拉长窗口。
+所有页面支持 `F5` 刷新当前标签页。
 
 ---
 
@@ -59,8 +69,13 @@ python tools/smoke_test.py            # 端到端自检
 hotel_system/
 ├── main.py                     程序入口（含首次运行自动初始化）
 ├── requirements.txt
-├── config.local.example.py     本地配置模板（复制为 config.local.py）
+├── config.local.example.py     本地配置模板（复制为 config_local.py）
+├── config_local.py             本机数据库口令（已在 .gitignore 中，不提交）
 ├── README.md
+├── LICENSE
+├── .gitignore
+├── 六课完整讲义.md              课程讲义（本地参考，已在 .gitignore 中）
+├── 题目.png                     课程题目截图
 │
 ├── sql/                        ★ 数据库结构唯一来源
 │   ├── 01_schema.sql           9 张表 + 索引 + 主外键 + CHECK 约束
@@ -69,7 +84,7 @@ hotel_system/
 │   └── 04_seed.sql             基础数据（三角色账号 / 4 种房型 / 16 间客房）
 │
 ├── app/
-│   ├── config.py               配置（环境变量 > config.local.py > 默认值）
+│   ├── config.py               配置（环境变量 > config_local.py > 默认值）
 │   ├── db.py                   数据访问层：连接、事务、回滚、异常封装
 │   ├── security.py             密码加盐哈希与校验
 │   ├── ids.py                  业务单号生成（抗碰撞 + 兜底重试）
@@ -146,6 +161,11 @@ hotel_system/
 | `trg_room_order_before_update` | **已结账的订单不能直接取消** —— 必须先走「结账单退款」，否则结账单金额与订单状态会互相矛盾 |
 | `trg_review_before_insert` | 被评价订单必须存在且属于该用户 |
 
+`01_schema.sql` / `02_views.sql` / `03_triggers.sql` 开头都显式列出了
+**已删除业务线的对象**的 `DROP ... IF EXISTS`（例如 `restaurant`、`dish`、
+`spa_booking`、`laundry_order`、`v_tech_schedule_today` 等），
+旧库升级后不会留下残留对象。
+
 ### 3.4 约束与索引
 
 - **12 个外键**：订单/账单类表全部使用 `ON DELETE RESTRICT`，
@@ -193,42 +213,51 @@ hotel_system/
 
 ---
 
-## 四、本次重构修复的问题
+## 四、重构要点（小结）
 
-### 致命问题
+相比最初的版本，这次重构集中在四个方面：
 
-| # | 问题 | 修复方式 |
-|---|---|---|
-| 1 | `setup_database.sql` 与代码内嵌 DDL 两份 schema 互相分叉，脚本与代码对不上导致建表必然报错；且缺少 `CREATE DATABASE` / `USE` | Schema 收敛到 `sql/01_schema.sql` 单一来源，Python 侧不再内嵌 DDL |
-| 2 | 「我的订单」用 `created_at` **秒级时间戳**作二叉搜索树键，同一秒的多张订单互相覆盖、静默丢单（实测 4 单只剩 1 单） | 删除 BST 排序，改为 `v_all_orders` 视图 + SQL `ORDER BY`；`tools/smoke_test.py` 含回归测试 |
+**1. 结构收敛（致命问题）**
 
-### 数据安全
+- 原系统 `setup_database.sql` 与代码内嵌 DDL 两份 schema 互相分叉，
+  脚本与代码对不上会导致建表必然报错。现在表结构只存在于 `sql/*.sql`，
+  Python 侧不再内嵌任何 DDL，并有自检断言锁定对象清单。
 
-| # | 问题 | 修复方式 |
-|---|---|---|
-| 3 | 密码明文存库 | `PBKDF2-HMAC-SHA256` 加盐哈希（20 万次迭代），支持参数升级自动重算 |
-| 4 | 全项目无 `rollback`，异常后连接残留脏事务 | `Database.transaction()` 上下文管理器，多步操作原子化 |
-| 5 | 订单号 = 时间戳 + 2 位随机数，主键碰撞无重试 | 毫秒级时间戳 + 4 位随机字符 + `uniqueness_guard` 冲突重试 |
-| 6 | 外键全部 `ON DELETE CASCADE`，删房型会清空订单 | 订单类外键改 `RESTRICT`，并给出可读的拒绝原因 |
-| 7 | 管理端「禁用/启用」按钮实际执行 `DELETE FROM user`，因级联会删掉该用户全部订单 | 改为 `is_active` 软禁用，历史订单完整保留 |
+**2. 数据安全**
 
-### 业务正确性
+- 密码明文存库 → `PBKDF2-HMAC-SHA256` 加盐哈希（20 万次迭代，支持参数升级自动重算）；
+- 全项目无 `rollback` → `Database.transaction()` 上下文管理器，多步操作原子化；
+- 订单号主键碰撞无重试 → 毫秒级时间戳 + 4 位随机字符 + 冲突重试；
+- 外键 `ON DELETE CASCADE` 会因删房型清空订单 → 订单类外键改 `RESTRICT`；
+- 管理端「禁用用户」实际执行 `DELETE FROM user` → 改为 `is_active` 软禁用，
+  历史订单完整保留。
 
-| # | 问题 | 修复方式 |
-|---|---|---|
-| 8 | 订房"先查后插"存在并发窗口，同一房间可被重复预订 | 同一事务内 `SELECT ... FOR UPDATE` 复查冲突 |
-| 9 | 同一订单可无限重复评价，且不校验归属 | 唯一约束 + 服务层校验 + 触发器校验 |
-| 10 | 日期手输格式错误直接抛 `ValueError` 崩溃 | `parse_date` 统一转换异常为友好提示，日期控件提供快捷按钮 |
-| 11 | `room.status` 永远停在 `available`，与订单完全脱节 | 由触发器随订单流转；「在住」不允许人工设置 |
-| 12 | 「收入」按订单状态求和，未收款订单也计入 | 新增 `payment` 流水表，收入只统计 `status='paid'` 的真实收款 |
-| 13 | 三端各自重复实现订单汇总与状态翻译 | 统一走 `v_all_orders` 视图与 `service.list_orders()` |
-| 14 | `models.py` 的 `Queue` 零调用、`PriorityQueue` 同优先级顺序不稳定 | 移除无用的自建数据结构，排序交给 SQL，结果确定且可解释 |
-| 15 | 删除业务线后，旧库中已不被脚本定义的表/视图/触发器会永久残留（`DROP ... IF EXISTS` 只覆盖脚本里仍存在的对象），对象清单随之虚高 | `01/02/03` 脚本显式列出已移除对象的 `DROP ... IF EXISTS`，旧库升级后不留残留；`tools/smoke_test.py` 增加残留检查断言 |
-| 16 | 题目要求「支持团体登记和团体结账」，原系统**完全没有团体概念**，一张订单只对应一间房 | 新增 `guest_group` 表与 `room_order.group_id`；前台端「团体登记」页一次登记多间房、整团入住/退房，`settle_group` 生成一张覆盖全团的结账单 |
-| 17 | 结账只是"按单登记收款"，没有结账单，回答不了"这次结了几间房、谁经手的、怎么结的" | 新增 `settlement` 表（金额快照）+ `room_order.settlement_no`；散客/团体结账都生成结账单，并支持整单退款 |
-| 18 | 题目要求「提供多种手段查询客人的信息」，原系统只能按用户名/真实姓名模糊搜 | 新增 `v_guest_profile` 视图与 `search_guest_profile()`：姓名/手机号/证件号/房间号/订单号/入住日期区间任意组合，没下过单的客人也能查到 |
-| 19 | 题目要求「操作员在密码支持下才可更改房价、房间类型、增加客房」，原系统登录后即可修改，且改动没有任何记录 | `Approval` 密码二次校验（哈希比对）拦截房型/房间的新增、修改、删除，并把「旧值 → 新值 + 原因 + 操作人」写入 `price_change_log` |
-| 20 | 题目要求「完善的结账报表系统」，原系统只有屏上统计、无法导出，也没有账单维度 | 新增结账报表（账单数/房间数/金额/散客与团体/按结算方式/按日/按经手人/未结账订单数）+ **CSV 导出**，并由 `v_settlement_detail` 提供账单明细 |
+**3. 业务正确性**
+
+- 「我的订单」用秒级时间戳作排序键，同一秒的多单互相覆盖、静默丢单
+  → 删除自建排序结构，统一走 `v_all_orders` 视图 + SQL `ORDER BY`，
+  并加了"同一秒连开 5 单全部可见"的回归测试；
+- 订房"先查后插"存在并发窗口 → 同一事务内 `SELECT ... FOR UPDATE` 复查冲突；
+- 同一订单可无限重复评价 → 唯一约束 + 服务层校验 + 触发器校验三重拦截；
+- `room.status` 与订单脱节 → 房态改由触发器随订单流转，「在住」不允许人工设置；
+- 「收入」按订单状态求和（未收款也计入）→ 新增 `payment` 流水表，
+  收入只统计 `status='paid'` 的真实收款；
+- 日期手输格式错误直接抛 `ValueError` → `parse_date` 统一转友好提示，
+  日期控件提供「前一天 / 后一天 / 今天」快捷按钮；
+- 三端各自重复实现订单汇总与状态翻译 → 统一走 `service.list_orders()`；
+- 自建的 `Queue` 零调用、`PriorityQueue` 同优先级顺序不稳定 → 移除无用结构。
+
+**4. 补齐课程题目要求**
+
+- **团体登记 / 团体结账**：新增 `guest_group` 表与 `room_order.group_id`，
+  前台端一次登记多间房、整团入住退房，`settle_group` 生成一张覆盖全团的结账单；
+- **结账单与结账报表**：新增 `settlement` 表（金额快照）+ `room_order.settlement_no`，
+  报表支持账单数/房间数/金额/散客与团体/按结算方式/按日/按经手人，
+  并支持 **CSV 导出** 与**整单退款**；
+- **多种手段查询客人**：新增 `v_guest_profile` 与 `search_guest_profile()`，
+  姓名/手机号/证件号/房间号/订单号/日期区间任意组合，没下过单的客人也能查到；
+- **房价房型变更的密码支持与审计**：`Approval` 二次密码校验拦截房型/房间的
+  新增、修改、删除，并把「旧值 → 新值 + 原因 + 操作人」写入 `price_change_log`。
 
 ---
 
@@ -270,8 +299,19 @@ hotel_system/
 ## 六、自检
 
 `tools/smoke_test.py` 覆盖 **273 项**断言（脚本结束时清理自己写入的数据、并把
-改动过的房价还原，可反复执行；运行末尾会打印实际通过项数，当前为
-`通过 273 项，失败 0 项`）：
+改动过的房价还原，可反复执行）：
+
+```bash
+python tools/smoke_test.py
+```
+
+输出末尾应显示：
+
+```
+通过 273 项，失败 0 项
+```
+
+覆盖范围：
 
 - 数据库对象清单（9 表 / 7 视图 / 5 触发器 / 12 外键 / 9 CHECK，且对象名与期望集合完全相等）
 - 密码：明文不入库、错误密码被拒、加盐生效、禁用账号无法登录
@@ -288,11 +328,11 @@ hotel_system/
 - 评价三重校验：订单存在性 / 归属 / 重复评价
 - 资源维护白名单：拦截非法表、拒绝改主键、类型校验、外键 RESTRICT 保护
 
-```bash
-python tools/smoke_test.py
-```
-
-输出末尾应显示 `通过 N 项，失败 0 项`。
+> **常见故障**：若「数据库对象数量」类断言失败，说明当前库与 `sql/*.sql` 不同步
+> —— 通常是旧库残留了已删除业务线的表（`restaurant`、`dish`、`spa_booking`、
+> `laundry_order` 等）。两种处理方式：
+> 重新执行一次 `python tools/init_db.py --yes`（会清空数据重建），
+> 或按 `sql/01_schema.sql` 开头的 `DROP TABLE IF EXISTS` 清单手工删除残留表。
 
 ---
 
