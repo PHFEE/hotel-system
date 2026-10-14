@@ -50,20 +50,23 @@ pip install pymysql
 python main.py
 ```
 
-首次运行会自动建库、建表、建视图/触发器并写入基础数据（结构来自 `sql/*.sql`，代码里没有第二份 DDL）。
+首次运行会自动建库，并按 `sql/01_schema.sql → 02_views.sql → 03_triggers.sql → 04_seed.sql`
+的顺序建表、建视图与触发器、写入基础数据（表结构只存在于 `sql/*.sql`，代码里没有第二份 DDL）。
+库已存在时只做一次轻量校验（账号数与视图数），不完整才补齐，不会每次启动都重建表。
+
 命令行参数：
 
-| 参数            | 作用                            |
-| ------------- | ----------------------------- |
-| `--init-db`   | 强制重新执行 `sql/*.sql`（重建数据表，会清空数据） |
-| `--no-init`   | 跳过启动时的数据库检查                   |
+| 参数          | 作用                                |
+| ----------- | --------------------------------- |
+| `--init-db` | 强制重新执行 `sql/*.sql`（重建数据表，会清空数据）    |
+| `--no-init` | 跳过启动时的数据库检查                       |
 
 ### 4. 其他常用命令
 
 ```bash
 python tools/init_db.py --yes          # 手动重建数据库（会清空数据）
-python tools/init_db.py --schema --yes # 只执行 01_schema.sql（不动视图/触发器/基础数据）
-python tools/seed_demo_orders.py       # 生成客房订单 / 团体单 / 结账单 / 支付流水演示数据
+python tools/init_db.py --schema --yes # 只执行 01_schema.sql（建表，不动视图/触发器/基础数据）
+python tools/seed_demo_orders.py       # 通过业务层生成客房订单 / 团体单 / 结账单 / 支付流水演示数据
 python tools/smoke_test.py             # 端到端自检
 ```
 
@@ -89,6 +92,7 @@ python tools/smoke_test.py             # 端到端自检
   无需手动拉长窗口；窗口缩小时也不会把它挤出可视区。
 - 所有页面支持 `F5` 刷新当前标签页；切换标签页时会自动刷新该页数据。
 - 顶部栏提供「修改密码」与「退出登录」，退出后回到登录窗口、数据库连接保持不变。
+- 业务操作失败不会中断程序：异常在对话框内以友好提示呈现，已填写的表单内容保留。
 
 ***
 
@@ -122,12 +126,12 @@ hotel_system/
 │       ├── base.py             窗口基类（统一异常处理、状态栏）
 │       ├── login.py            登录 / 注册 / 修改密码
 │       ├── guest.py            客人端主窗口
-│       ├── guest_tabs.py       客人端两个标签页（客房预订 / 我的订单）
+│       ├── guest_tabs.py       客人端 2 个标签页（客房预订 / 我的订单）
 │       ├── reception.py        前台端主窗口
-│       ├── reception_tabs.py   前台端七个标签页（概览/客房/团体登记/入住退房/
+│       ├── reception_tabs.py   前台端 7 个标签页（概览/客房/团体登记/入住退房/
 │       │                        客人查询/订单/评价）
 │       ├── admin.py            管理端主窗口
-│       └── admin_tabs.py       管理端六个标签页（含结账报表、变更记录）
+│       └── admin_tabs.py       管理端 6 个标签页（含结账报表、变更记录）
 │
 └── tools/
     ├── init_db.py              建库工具
@@ -189,13 +193,15 @@ hotel_system/
 
 ### 3.4 约束与索引
 
+以下数字为当前库（`hotel_booking`）经 `information_schema` 统计的实际值：
+
 - **12 个外键**：订单/账单类表全部使用 `ON DELETE RESTRICT`，
   删除房型/房间/团体单不会连带删除历史订单与账单（原版是 `CASCADE`，
   误删即丢账目）。
 - **9 个 CHECK 约束**：价格为正、入住人数上限、离店晚于入住、金额非负、
   评分 1–5，以及团体单的日期区间与结账单的房间数/金额取值域。
-- **22 个显式非主键索引**；另有 5 个由 MySQL 为外键自动创建的索引，
-  因此 `information_schema` 统计到的非主键索引总数为 **27** 个，其中唯一索引 8 个。
+- **27 个非主键索引**（22 个显式声明的索引 + 5 个由 MySQL 为外键自动创建），
+  其中唯一索引 8 个。
   唯一索引保证业务唯一性：`user(username/phone/email)`、`room_type(type_name)`、
   `room(room_number)`、`payment(payment_no)`、`review(user_id, order_id, order_type)`
   防重复评价，以及 `guest_group(group_name, check_in_date)` 防同名团体同日重复登记；
@@ -224,6 +230,7 @@ hotel_system/
 - `01_schema.sql` 对本项目用到的 9 张表逐张 `DROP TABLE IF EXISTS` 后重建，
   执行它**会清空 `hotel_booking` 库中的既有数据**，请先备份
   （`mysqldump -u root -p hotel_booking > backup.sql`）。
+- `04_seed.sql` 使用 `INSERT IGNORE` + 显式主键，可重复执行而不会产生重复数据。
 
 ### 3.7 团体与结账的数据一致性
 
@@ -244,9 +251,9 @@ hotel_system/
 
 ***
 
-## 四、重构要点（小结）
+## 四、修订与重构小结
 
-相比最初的版本，这次重构集中在四个方面：
+相比最初的版本，这轮修订集中在六个方面：
 
 **1. 结构收敛（致命问题）**
 
@@ -293,11 +300,21 @@ hotel_system/
 
 **5. 界面与可用性**
 
-- 主窗口默认高度由 `680` 提到 `820`（最小高度 `750`），
+- 主窗口默认尺寸提到 `1000x820`（最小 `960x750`），
   客人端「确认预订」按钮开窗即可见，不必手动拉伸；
 - 登录页演示账号支持**点击自动填入**用户名与密码，取消手输；
 - 窗口骨架统一收敛到 [app/ui/base.py](app/ui/base.py) 的 `BaseWindow`：
   业务异常转成友好弹窗与状态栏提示，而不是把异常栈抛给 Tkinter 导致界面卡死。
+
+**6. 健壮性与类型**
+
+- 所有可能失败的业务操作都包在 `BaseWindow.run_guarded()` 内执行，
+  `DatabaseError` 一律在对应对话框中被捕获并提示，不再逃逸到 Tkinter 顶层；
+  操作失败时**保持对话框打开、保留用户已填内容**，避免重复输入；
+- 数据库访问层对 `fetchone()` 结果统一做空值收窄，消除"None 不可下标"一类隐患；
+- 全项目通过 Pyright 静态类型检查，**0 error**
+  （仅剩 `pymysql` 无类型存根导致的 `reportMissingModuleSource` 提示）；
+- 顺带精简了各模块中冗余的过程性注释与文档串，只保留解释"为什么"的部分。
 
 ***
 
