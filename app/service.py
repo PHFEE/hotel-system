@@ -18,7 +18,7 @@ from typing import Any, Sequence
 
 from app.db import Database, DatabaseError, Transaction
 from app.ids import new_order_id, uniqueness_guard
-from app.security import hash_password, needs_rehash, verify_password
+from app.security import hash_password, verify_password
 
 # --- 各表主键列名（订单通用操作时用） ---------------------------------
 #    原设计覆盖客房/餐饮/健身/SPA/洗衣 5 条业务线；按课程题目
@@ -102,7 +102,7 @@ def authenticate(db: Database, username: str, password: str) -> Session:
     """
     校验账号密码。
 
-    原实现直接拿明文比对。现在取出哈希做常量时间校验；
+    原实现直接拿明文比对。现在取出哈希做加盐校验；
     同时检查 is_active，被禁用的账号无法登录（配合管理端"禁用/启用"）。
     """
     username = (username or "").strip()
@@ -120,11 +120,6 @@ def authenticate(db: Database, username: str, password: str) -> Session:
     if not row["is_active"]:
         raise BusinessError("该账号已被禁用，请联系管理员")
 
-    # 密码参数升级时自动重算哈希
-    if needs_rehash(row["password_hash"]):
-        db.execute("UPDATE `user` SET password_hash = %s WHERE user_id = %s",
-                   (hash_password(password), row["user_id"]))
-
     return Session(
         user_id=row["user_id"],
         username=row["username"],
@@ -134,7 +129,7 @@ def authenticate(db: Database, username: str, password: str) -> Session:
 
 
 def register_guest(db: Database, username: str, password: str, password_confirm: str,
-                   phone: str = "", real_name: str = "") -> int:
+                   phone: str | None = "", real_name: str = "") -> int:
     """注册客人账号，用户名/手机号唯一性由数据库约束兜底。"""
     username = (username or "").strip()
     if not username or not password:
@@ -1216,6 +1211,8 @@ def create_group_booking(db: Database, *, group_name: str, contact_name: str,
                 saved = tx.query_one(
                     "SELECT nights, total_price FROM room_order WHERE order_id = %s",
                     (order_id,))
+                if saved is None:
+                    raise BusinessError("团体登记失败：订单写入后未能读取到金额")
                 order_ids.append(order_id)
                 total_price += float(saved["total_price"])
                 nights = int(saved["nights"])

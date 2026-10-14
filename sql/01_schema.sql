@@ -1,26 +1,3 @@
--- =====================================================================
---  宾馆客房管理系统 —— 数据库结构定义（唯一 schema 源）
---  ------------------------------------------------------------------
---  文件       : sql/01_schema.sql
---  数据库     : hotel_booking
---  MySQL 版本 : 8.0+（使用 CHECK 约束与 INSERT ... ON DUPLICATE KEY）
---  字符集     : utf8mb4 / utf8mb4_0900_ai_ci
---  范围       : 选题19 宾馆客房管理系统 —— 客房主线，共 9 张表
---               原设计中的餐饮/健身/SPA/洗衣 4 条业务线已按题目要求整体移除；
---               本版本补齐了题目要求 (1)(3)(4)(5) 对应的
---               团体登记/团体结账（guest_group、settlement）、
---               客人信息查询字段（room_order.id_card）与
---               价格变更留痕（price_change_log）。
---
---  说明：
---    本文件是系统数据库结构的**唯一来源**。Python 代码不再内嵌建表语句，
---    由 tools/init_db.py 按 01 -> 02 -> 03 -> 04 顺序执行。
---    因此不会出现"脚本与代码两份 schema 互相分叉"的问题。
---
---  执行顺序：01_schema.sql -> 02_views.sql -> 03_triggers.sql -> 04_seed.sql
--- =====================================================================
-
--- ---------------------------------------------------------------------
 --  0. 创建数据库
 -- ---------------------------------------------------------------------
 CREATE DATABASE IF NOT EXISTS `hotel_booking`
@@ -29,38 +6,8 @@ CREATE DATABASE IF NOT EXISTS `hotel_booking`
 
 USE `hotel_booking`;
 
--- 重建表结构时需要先解除外键检查，否则 DROP TABLE 会因被引用而失败
--- （例如 room_order 引用了 user，user 就先删不掉）。
--- 脚本结束时必须重新打开。
 SET FOREIGN_KEY_CHECKS = 0;
 
-
--- ---------------------------------------------------------------------
---  0.1 清理历史对象（已移除的业务线）
---
---  说明：本版本按课程题目（选题19 宾馆客房管理系统）只保留客房主线，
---  餐饮/健身/SPA/洗衣 4 条业务线已被移除。下面这些 DROP 语句本身不创建
---  任何东西，作用是让**从旧版本升级上来的数据库**不留残留表 ——
---  否则旧库里的 dining_order 等表会一直存在，information_schema 统计
---  与"关于系统"页的数字都会虚高。全新数据库上执行时它们只是空操作。
--- ---------------------------------------------------------------------
-DROP TABLE IF EXISTS `dining_order_item`;
-DROP TABLE IF EXISTS `dining_order`;
-DROP TABLE IF EXISTS `dish`;
-DROP TABLE IF EXISTS `dish_category`;
-DROP TABLE IF EXISTS `restaurant`;
-DROP TABLE IF EXISTS `fitness_booking`;
-DROP TABLE IF EXISTS `fitness_facility`;
-DROP TABLE IF EXISTS `spa_booking`;
-DROP TABLE IF EXISTS `tech_schedule`;
-DROP TABLE IF EXISTS `technician`;
-DROP TABLE IF EXISTS `spa_service`;
-DROP TABLE IF EXISTS `laundry_order`;
-
-
--- =====================================================================
---  一、用户与权限
--- =====================================================================
 
 -- 1. 用户表
 --    password_hash 存 PBKDF2-HMAC-SHA256 加盐哈希（见 app/security.py），

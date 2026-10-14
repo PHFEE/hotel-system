@@ -1,53 +1,79 @@
-# 宾馆客房管理系统
+# 酒店服务预约管理系统
 
-数据库课程设计 · 选题 19 · Tkinter + MySQL 8.0
+数据库课程设计 · 选题 19「宾馆客房管理系统」 · Tkinter + MySQL 8.0
 
 一套面向宾馆客房业务的桌面管理系统，围绕**客房预订**这一条主线，
 含客人 / 前台 / 管理员三种角色的客户端。
 
-按课程题目（选题 19 宾馆客房管理系统）的要求，系统做了三件事：
-
-1. **收敛业务线** —— 删除餐饮 / 健身 / SPA / 洗衣四条与选题无关的业务线，
-   只保留客房主线；
-2. **补齐题目要求的功能** —— 团体登记与团体结账（要求 1）、结账单与结账报表
-   （要求 1、5）、多手段查询客人信息（要求 3）、房价与房型变更的密码支持与
-   审计留痕（要求 4）；
-3. **把数据库结构收敛为唯一来源**（`sql/*.sql`），补齐视图、触发器、
-   索引、约束与事务边界。
-
----
+***
 
 ## 一、快速开始
 
+### 1. 安装依赖
+
+只依赖一个第三方库（界面用 Python 自带的 Tkinter）：
+
 ```bash
-# 1. 安装依赖（仅需 PyMySQL）
-pip install -r requirements.txt
+pip install pymysql
+```
 
-# 2. 配置数据库连接（二选一）
-#    方式 A：复制模板并修改密码（注意目标文件名是 config_local.py，下划线）
-copy config.local.example.py config_local.py
-#    方式 B：设置环境变量
-set HOTEL_DB_PASSWORD=你的密码
+### 2. 配置数据库连接
 
-# 3. 启动（首次运行会自动建库、建表、建视图/触发器并写入基础数据）
+优先级为 **环境变量 > `config_local.py` > 代码内默认值**（见 [app/config.py](app/config.py)）。
+按下面二选一：
+
+- **方式 A：新建 `config_local.py`**（项目根目录，与 `main.py` 同级。
+  该文件已在 `.gitignore` 中，不会提交到版本库）：
+
+  ```python
+  DB_OVERRIDES = {
+      "host": "localhost",
+      "port": 3306,
+      "user": "root",
+      "password": "你的 MySQL 密码",
+      "database": "hotel_booking",
+  }
+  ```
+
+- **方式 B：设置环境变量**（`HOTEL_DB_HOST` / `HOTEL_DB_PORT` / `HOTEL_DB_USER` /
+  `HOTEL_DB_PASSWORD` / `HOTEL_DB_NAME` / `HOTEL_DB_CHARSET`）：
+
+  ```bash
+  set HOTEL_DB_PASSWORD=你的密码
+  ```
+
+> 项目里不再附带配置模板文件：上面这段 `DB_OVERRIDES` 只有 6 行，直接手写即可。
+
+### 3. 启动
+
+```bash
 python main.py
 ```
 
-其他常用命令：
+首次运行会自动建库、建表、建视图/触发器并写入基础数据（结构来自 `sql/*.sql`，代码里没有第二份 DDL）。
+命令行参数：
+
+| 参数            | 作用                            |
+| ------------- | ----------------------------- |
+| `--init-db`   | 强制重新执行 `sql/*.sql`（重建数据表，会清空数据） |
+| `--no-init`   | 跳过启动时的数据库检查                   |
+
+### 4. 其他常用命令
 
 ```bash
-python tools/init_db.py --yes         # 手动重建数据库（会清空数据）
-python tools/seed_demo_orders.py      # 生成客房订单 / 团体单 / 结账单 / 支付流水演示数据
-python tools/smoke_test.py            # 端到端自检
+python tools/init_db.py --yes          # 手动重建数据库（会清空数据）
+python tools/init_db.py --schema --yes # 只执行 01_schema.sql（不动视图/触发器/基础数据）
+python tools/seed_demo_orders.py       # 生成客房订单 / 团体单 / 结账单 / 支付流水演示数据
+python tools/smoke_test.py             # 端到端自检
 ```
 
 ### 演示账号
 
-| 角色 | 用户名 | 密码 |
-|---|---|---|
-| 管理员 | `admin` | `admin123` |
-| 前台 | `reception` | `recep123` |
-| 客人 | `guest01` | `guest123` |
+| 角色  | 用户名         | 密码         |
+| --- | ----------- | ---------- |
+| 管理员 | `admin`     | `admin123` |
+| 前台  | `reception` | `recep123` |
+| 客人  | `guest01`   | `guest123` |
 
 > 登录窗口底部列出了这三个账号，**鼠标点一下即可自动填入用户名和密码**，
 > 光标会停在密码框，直接按回车就能登录。
@@ -56,25 +82,25 @@ python tools/smoke_test.py            # 端到端自检
 
 ### 界面说明
 
-三种角色的主窗口初始尺寸为 `1000x820`，最小尺寸 `960x750`
-（定义在 `app/config.py` 的 `WINDOW_SIZE` 与 `app/ui/base.py` 的 `minsize`），
-保证客房预订页左侧表单底部的「确认预订」按钮一进入就能看到，无需手动拉长窗口。
-所有页面支持 `F5` 刷新当前标签页。
+- 三种角色主窗口默认尺寸 `1000x820`、最小尺寸 `960x750`
+  （分别定义在 [app/config.py](app/config.py) 的 `WINDOW_SIZE`
+  与 [app/ui/base.py](app/ui/base.py) 的 `minsize`）。
+  这样客人端「客房预订」页左下角的「确认预订」按钮一进入就完整可见，
+  无需手动拉长窗口；窗口缩小时也不会把它挤出可视区。
+- 所有页面支持 `F5` 刷新当前标签页；切换标签页时会自动刷新该页数据。
+- 顶部栏提供「修改密码」与「退出登录」，退出后回到登录窗口、数据库连接保持不变。
 
----
+***
 
 ## 二、项目结构
 
 ```
 hotel_system/
 ├── main.py                     程序入口（含首次运行自动初始化）
-├── requirements.txt
-├── config.local.example.py     本地配置模板（复制为 config_local.py）
-├── config_local.py             本机数据库口令（已在 .gitignore 中，不提交）
+├── config_local.py             本机数据库口令（不提交到版本库）
 ├── README.md
 ├── LICENSE
 ├── .gitignore
-├── 六课完整讲义.md              课程讲义（本地参考，已在 .gitignore 中）
 ├── 题目.png                     课程题目截图
 │
 ├── sql/                        ★ 数据库结构唯一来源
@@ -116,19 +142,19 @@ hotel_system/
 基础资源维护这类需要动态表名的功能，也通过 `service.RESOURCE_CATALOG`
 白名单注册表在服务层完成，界面不再直接触碰数据库。
 
----
+***
 
 ## 三、数据库设计
 
 ### 3.1 数据表（9 张）
 
-| 分组 | 表 |
-|---|---|
-| 用户 | `user` |
-| 客房 | `room_type`、`room`、`room_order` |
-| 团体与结账 | `guest_group`、`settlement` |
-| 支付与评价 | `payment`、`review` |
-| 操作审计 | `price_change_log` |
+| 分组    | 表                               |
+| ----- | ------------------------------- |
+| 用户    | `user`                          |
+| 客房    | `room_type`、`room`、`room_order` |
+| 团体与结账 | `guest_group`、`settlement`      |
+| 支付与评价 | `payment`、`review`              |
+| 操作审计  | `price_change_log`              |
 
 三条关键关系：
 
@@ -141,30 +167,25 @@ hotel_system/
 
 ### 3.2 视图（7 个）
 
-| 视图 | 作用 |
-|---|---|
-| `v_all_orders` | 客房订单的状态归一化与倒序列表（`status_group` / `status_label` / `status_category`），并带出团体名与结账单号。三端订单列表统一走它 |
-| `v_room_availability` | 房间与房型信息（带 `room_id`，预订无需按房号反查） |
-| `v_room_current_state` | 房间物理状态 + 有效订单数 + 在住客人，解决状态与订单脱节 |
-| `v_daily_revenue` | 按日汇总 `payment` 中 `status='paid'` 的真实收款 |
-| `v_service_stats` | 客房订单量与状态分布（供管理端看板） |
-| `v_guest_profile` | 客人档案：以 `user` 为主体 LEFT JOIN 订单，**没下过单的客人也能查到**；支撑姓名/手机号/证件号/房间号/订单号/日期区间六种检索 |
-| `v_settlement_detail` | 结账单明细：一张账单 → 多个房间 → 各自的收款流水，供查看结账单明细与导出报表 |
+| 视图                     | 作用                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `v_all_orders`         | 客房订单的状态归一化与倒序列表（`status_group` / `status_label` / `status_category`），并带出团体名与结账单号。三端订单列表统一走它 |
+| `v_room_availability`  | 房间与房型信息（带 `room_id`，预订无需按房号反查）                                                              |
+| `v_room_current_state` | 房间物理状态 + 有效订单数 + 在住客人，解决状态与订单脱节                                                             |
+| `v_daily_revenue`      | 按日汇总 `payment` 中 `status='paid'` 的真实收款                                                      |
+| `v_service_stats`      | 客房订单量与状态分布（供管理端看板）                                                                          |
+| `v_guest_profile`      | 客人档案：以 `user` 为主体 LEFT JOIN 订单，**没下过单的客人也能查到**；支撑姓名/手机号/证件号/房间号/订单号/日期区间六种检索                |
+| `v_settlement_detail`  | 结账单明细：一张账单 → 多个房间 → 各自的收款流水，供查看结账单明细与导出报表                                                   |
 
 ### 3.3 触发器（5 个）
 
-| 触发器 | 保障的不变量 |
-|---|---|
-| `trg_room_order_before_insert` | 晚数与总金额由数据库按当前房价重算（界面无法篡改账目）；团体成员的入住/离店日期必须与团体单一致 |
-| `trg_room_order_after_insert` | 当日到店的订单自动把房间置为「在住」 |
-| `trg_room_order_after_update` | 入住→在住、退房→打扫中、取消→按剩余订单回置空闲 |
+| 触发器                            | 保障的不变量                                            |
+| ------------------------------ | ------------------------------------------------- |
+| `trg_room_order_before_insert` | 晚数与总金额由数据库按当前房价重算（界面无法篡改账目）；团体成员的入住/离店日期必须与团体单一致  |
+| `trg_room_order_after_insert`  | 当日到店的订单自动把房间置为「在住」                                |
+| `trg_room_order_after_update`  | 入住→在住、退房→打扫中、取消→按剩余订单回置空闲                         |
 | `trg_room_order_before_update` | **已结账的订单不能直接取消** —— 必须先走「结账单退款」，否则结账单金额与订单状态会互相矛盾 |
-| `trg_review_before_insert` | 被评价订单必须存在且属于该用户 |
-
-`01_schema.sql` / `02_views.sql` / `03_triggers.sql` 开头都显式列出了
-**已删除业务线的对象**的 `DROP ... IF EXISTS`（例如 `restaurant`、`dish`、
-`spa_booking`、`laundry_order`、`v_tech_schedule_today` 等），
-旧库升级后不会留下残留对象。
+| `trg_review_before_insert`     | 被评价订单必须存在且属于该用户                                   |
 
 ### 3.4 约束与索引
 
@@ -174,7 +195,7 @@ hotel_system/
 - **9 个 CHECK 约束**：价格为正、入住人数上限、离店晚于入住、金额非负、
   评分 1–5，以及团体单的日期区间与结账单的房间数/金额取值域。
 - **22 个显式非主键索引**；另有 5 个由 MySQL 为外键自动创建的索引，
-  因此 `information_schema` 统计到的非主键索引总数为 **27** 个。
+  因此 `information_schema` 统计到的非主键索引总数为 **27** 个，其中唯一索引 8 个。
   唯一索引保证业务唯一性：`user(username/phone/email)`、`room_type(type_name)`、
   `room(room_number)`、`payment(payment_no)`、`review(user_id, order_id, order_type)`
   防重复评价，以及 `guest_group(group_name, check_in_date)` 防同名团体同日重复登记；
@@ -183,9 +204,9 @@ hotel_system/
   直接服务最高频的"查某时段可用房"查询，
   `room_order(group_id)` / `room_order(settlement_no)` 服务团体与结账单的汇总查询。
 
-### 3.5 关于 order_type 字段
+### 3.5 关于 order\_type 字段
 
-`review.order_id` / `payment.order_id` 现在**只指向 `room_order`**，
+`review.order_id` / `payment.order_id` 现在**只指向** **`room_order`**，
 不再跨多张订单表，因此不再需要多态引用所需的复杂校验。
 
 `order_type` 列仍然保留为 `ENUM` 类型（当前取值只有 `'room'`），
@@ -194,7 +215,17 @@ hotel_system/
 `trg_review_before_insert` 中补一个 `CASE` 分支即可，不必改动表结构。
 当前系统只会写入 `'room'`。
 
-### 3.6 团体与结账的数据一致性
+### 3.6 关于脚本的重复执行
+
+- `02_views.sql` / `03_triggers.sql` 开头用
+  `DROP VIEW / DROP TRIGGER IF EXISTS` 列出本文件要重建的对象，
+  以及**旧版本遗留**的对象名（如 `v_tech_schedule_today`、
+  `trg_dining_item_before_insert` 等），因此从旧库升级上来不会留下同名残留。
+- `01_schema.sql` 对本项目用到的 9 张表逐张 `DROP TABLE IF EXISTS` 后重建，
+  执行它**会清空 `hotel_booking` 库中的既有数据**，请先备份
+  （`mysqldump -u root -p hotel_booking > backup.sql`）。
+
+### 3.7 团体与结账的数据一致性
 
 「一次操作涉及多行」的业务（团体登记、团体结账、整单退款），一致性由三层共同保证：
 
@@ -211,7 +242,7 @@ hotel_system/
 （订单回到"未结账"状态），之后才允许按状态机取消 ——
 这正是 `trg_room_order_before_update` 放行的顺序，顺序反了会被数据库拦住。
 
----
+***
 
 ## 四、重构要点（小结）
 
@@ -225,7 +256,8 @@ hotel_system/
 
 **2. 数据安全**
 
-- 密码明文存库 → `PBKDF2-HMAC-SHA256` 加盐哈希（20 万次迭代，支持参数升级自动重算）；
+- 密码明文存库 → `PBKDF2-HMAC-SHA256` 加盐哈希（20 万次迭代，
+  格式 `pbkdf2_sha256$迭代次数$盐$哈希`，见 [app/security.py](app/security.py)）；
 - 全项目无 `rollback` → `Database.transaction()` 上下文管理器，多步操作原子化；
 - 订单号主键碰撞无重试 → 毫秒级时间戳 + 4 位随机字符 + 冲突重试；
 - 外键 `ON DELETE CASCADE` 会因删房型清空订单 → 订单类外键改 `RESTRICT`；
@@ -259,7 +291,15 @@ hotel_system/
 - **房价房型变更的密码支持与审计**：`Approval` 二次密码校验拦截房型/房间的
   新增、修改、删除，并把「旧值 → 新值 + 原因 + 操作人」写入 `price_change_log`。
 
----
+**5. 界面与可用性**
+
+- 主窗口默认高度由 `680` 提到 `820`（最小高度 `750`），
+  客人端「确认预订」按钮开窗即可见，不必手动拉伸；
+- 登录页演示账号支持**点击自动填入**用户名与密码，取消手输；
+- 窗口骨架统一收敛到 [app/ui/base.py](app/ui/base.py) 的 `BaseWindow`：
+  业务异常转成友好弹窗与状态栏提示，而不是把异常栈抛给 Tkinter 导致界面卡死。
+
+***
 
 ## 五、操作流程速览
 
@@ -294,12 +334,12 @@ hotel_system/
 - **订单总览** — 全量客房订单与支付流水
 - **关于系统** — 直观展示数据库对象清单（表/视图/触发器/索引/外键/CHECK）
 
----
+***
 
 ## 六、自检
 
-`tools/smoke_test.py` 覆盖 **273 项**断言（脚本结束时清理自己写入的数据、并把
-改动过的房价还原，可反复执行）：
+[tools/smoke_test.py](tools/smoke_test.py) 覆盖 **273 项**断言（脚本结束时清理自己写入的
+数据、并把改动过的房价还原，可反复执行）：
 
 ```bash
 python tools/smoke_test.py
@@ -327,14 +367,16 @@ python tools/smoke_test.py
 - 支付与退款：重复支付被拒、营收来自流水、未收款订单不计入营收
 - 评价三重校验：订单存在性 / 归属 / 重复评价
 - 资源维护白名单：拦截非法表、拒绝改主键、类型校验、外键 RESTRICT 保护
+- 清理校验：运行结束后按外键依赖顺序删除本次数据，并核对对象数量与运行前一致
 
 > **常见故障**：若「数据库对象数量」类断言失败，说明当前库与 `sql/*.sql` 不同步
-> —— 通常是旧库残留了已删除业务线的表（`restaurant`、`dish`、`spa_booking`、
-> `laundry_order` 等）。两种处理方式：
-> 重新执行一次 `python tools/init_db.py --yes`（会清空数据重建），
-> 或按 `sql/01_schema.sql` 开头的 `DROP TABLE IF EXISTS` 清单手工删除残留表。
+> —— 通常是旧库残留了已删除业务线的表（`restaurant`、`dish`、`dining_order`、
+> `spa_booking`、`fitness_booking`、`technician`、`laundry_order` 等）。
+> 这些历史表不在 `01_schema.sql` 的 `DROP TABLE IF EXISTS` 清单里（该脚本只重建
+> 客房主线自己的 9 张表），需要先在数据库里手工 `DROP TABLE` 掉残留对象，
+> 再执行 `python tools/init_db.py --yes` 重建。
 
----
+***
 
 ## 七、环境要求
 
