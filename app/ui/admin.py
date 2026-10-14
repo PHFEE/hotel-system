@@ -6,13 +6,12 @@ from tkinter import ttk
 
 from app.ui.base import BaseWindow
 from app.ui.admin_tabs import (
-    AboutTab, AdminOrdersTab, ResourcesTab, RevenueTab, SettlementReportTab,
-    UsersTab,
+    AdminOrdersTab, ResourcesTab, RevenueTab, SettlementReportTab, UsersTab,
 )
 
 
 class AdminWindow(BaseWindow):
-    """管理端：数据统计 / 结账报表 / 用户管理 / 资源管理 / 订单总览 / 关于。"""
+    """管理端：数据统计 / 结账报表 / 用户管理 / 资源管理 / 订单总览。"""
 
     role_title = "系统管理端"
 
@@ -28,7 +27,6 @@ class AdminWindow(BaseWindow):
         self.users_tab = UsersTab(self.notebook, self)
         self.resources_tab = ResourcesTab(self.notebook, self)
         self.orders_tab = AdminOrdersTab(self.notebook, self)
-        self.about_tab = AboutTab(self.notebook, self)
 
         for tab, label in (
             (self.revenue_tab, "  数据统计  "),
@@ -36,7 +34,6 @@ class AdminWindow(BaseWindow):
             (self.users_tab, "  用户管理  "),
             (self.resources_tab, "  资源管理  "),
             (self.orders_tab, "  订单总览  "),
-            (self.about_tab, "  关于系统  "),
         ):
             self.notebook.add(tab, text=label)
 

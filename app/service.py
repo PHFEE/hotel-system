@@ -799,7 +799,7 @@ def list_price_change_logs(db: Database, *, limit: int = 200,
 
 
 def schema_object_names(db: Database) -> dict:
-    """数据库对象清单（供管理端「关于系统」页展示）。"""
+    """数据库对象清单（供自检脚本核对视图/触发器/数据表名称）。"""
     return {
         "views": db.query(
             "SELECT table_name AS name FROM information_schema.views "
