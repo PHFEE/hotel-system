@@ -21,6 +21,7 @@ from datetime import date, timedelta
 from tkinter import filedialog, ttk
 
 from app import service, stats
+from app.db import DatabaseError
 from app.service import BusinessError
 from app.ui.widgets import (
     CS, FONT, DataTable, DetailDialog, LabeledCombo, LabeledEntry,
@@ -695,6 +696,9 @@ class UsersTab(AdminTab):
             except BusinessError as exc:
                 error_var.set(f"⚠ {exc}")
                 return
+            except DatabaseError as exc:
+                error_var.set(f"⚠ 数据库错误：{exc}")
+                return
             info("已重置", f"用户 {row['username']} 的密码已更新为加盐哈希。",
                  parent=dialog)
             dialog.destroy()
@@ -898,15 +902,16 @@ class ResourcesTab(AdminTab):
 
         if self.table is not None:
             self.table.destroy()
-        self.table = DataTable(
+        table = DataTable(
             self.table_host,
             [(f["name"], f["label"], f["width"]) for f in spec["fields"]],
             height=17)
-        self.table.pack(fill="both", expand=True)
+        self.table = table
+        table.pack(fill="both", expand=True)
 
         def action() -> None:
             rows = service.resource_list(self.db, table_name)
-            self.table.set_rows(rows, formatter=lambda r: tuple(
+            table.set_rows(rows, formatter=lambda r: tuple(
                 r.get(f["name"]) for f in spec["fields"]))
             self.app.status.show(f"{name}：{len(rows)} 条记录", "info")
 

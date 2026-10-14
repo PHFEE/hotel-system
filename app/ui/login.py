@@ -48,7 +48,7 @@ class LoginWindow:
         form = tk.Frame(self.window, bg=CS.BG_MAIN)
         form.pack()
 
-        def field(label: str, show: str | None = None) -> tk.Entry:
+        def field(label: str, show: str = "") -> tk.Entry:
             tk.Label(form, text=label, font=(FONT, 10), bg=CS.BG_MAIN,
                      fg=CS.TEXT_PRIMARY).pack(anchor="w", pady=(6, 0))
             entry = tk.Entry(form, font=(FONT, 12), width=26, bd=0, relief="flat",
@@ -169,7 +169,7 @@ class RegisterDialog(tk.Toplevel):
         form = tk.Frame(self, bg=CS.BG_WHITE)
         form.pack(padx=44, fill="x")
 
-        def field(label: str, show: str | None = None) -> tk.Entry:
+        def field(label: str, show: str = "") -> tk.Entry:
             tk.Label(form, text=label, font=(FONT, 10), bg=CS.BG_WHITE,
                      fg=CS.TEXT_PRIMARY).pack(anchor="w", pady=(5, 0))
             entry = tk.Entry(form, font=(FONT, 11), width=30, bd=0, relief="flat",
@@ -282,6 +282,8 @@ class ChangePasswordDialog(tk.Toplevel):
                                         self.entry_new.get(), self.entry_confirm.get(),
                                         user_id=self.session.user_id)
             else:
+                # 从登录页进入（session 为 None）时必定创建了用户名输入框
+                assert self.entry_username is not None
                 service.change_password(self.db, self.entry_old.get(),
                                         self.entry_new.get(), self.entry_confirm.get(),
                                         username=self.entry_username.get())

@@ -45,7 +45,7 @@ class Database:
         config.update(overrides)
         self._config = config
         self._lock = threading.RLock()
-        self.connection: pymysql.connections.Connection | None = None
+        self.connection: pymysql.connections.Connection[pymysql.cursors.DictCursor] | None = None
         self.cursor: pymysql.cursors.DictCursor | None = None
         self._connect()
 
@@ -72,22 +72,29 @@ class Database:
                 original=exc,
             ) from exc
 
-    def _ensure_connection(self) -> None:
-        """连接失效时真正重建连接，而不是重复调用同一个 ping。"""
+    def _ensure_connection(self) -> tuple[pymysql.connections.Connection[pymysql.cursors.DictCursor],
+                                           pymysql.cursors.DictCursor]:
+        """确保连接与游标可用，返回 (connection, cursor)。"""
         if self.connection is None:
             self._connect()
-            return
-        try:
-            self.connection.ping(reconnect=True)
-            if self.cursor is None:
-                self.cursor = self.connection.cursor()
-        except pymysql.Error:
-            # 重连失败则彻底重建
-            with contextlib.suppress(Exception):
-                self.connection.close()
-            self.connection = None
-            self.cursor = None
-            self._connect()
+        else:
+            try:
+                self.connection.ping(reconnect=True)
+                if self.cursor is None:
+                    self.cursor = self.connection.cursor()
+            except pymysql.Error:
+                # 重连失败则彻底重建
+                with contextlib.suppress(Exception):
+                    self.connection.close()
+                self.connection = None
+                self.cursor = None
+                self._connect()
+
+        # 上面要么重建成功，要么已抛 DatabaseError；此处仅做类型收窄
+        assert self.connection is not None
+        if self.cursor is None:
+            self.cursor = self.connection.cursor()
+        return self.connection, self.cursor
 
     # ------------------------------------------------------------------
     # 查询
@@ -96,9 +103,9 @@ class Database:
         """执行 SELECT，返回全部结果行（列表套字典）。"""
         with self._lock:
             try:
-                self._ensure_connection()
-                self.cursor.execute(sql, tuple(params or ()))
-                return list(self.cursor.fetchall())
+                _, cursor = self._ensure_connection()
+                cursor.execute(sql, tuple(params or ()))
+                return list(cursor.fetchall())
             except pymysql.Error as exc:
                 raise DatabaseError(f"查询失败：{exc}", original=exc) from exc
 
@@ -106,9 +113,9 @@ class Database:
         """执行 SELECT，返回第一行或 None。"""
         with self._lock:
             try:
-                self._ensure_connection()
-                self.cursor.execute(sql, tuple(params or ()))
-                return self.cursor.fetchone()
+                _, cursor = self._ensure_connection()
+                cursor.execute(sql, tuple(params or ()))
+                return cursor.fetchone()
             except pymysql.Error as exc:
                 raise DatabaseError(f"查询失败：{exc}", original=exc) from exc
 
@@ -131,10 +138,10 @@ class Database:
         单条语句自身即构成一个事务；多步操作请使用 transaction()。
         """
         with self._lock:
-            self._ensure_connection()
+            connection, cursor = self._ensure_connection()
             try:
-                affected = self.cursor.execute(sql, tuple(params or ()))
-                self.connection.commit()
+                affected = cursor.execute(sql, tuple(params or ()))
+                connection.commit()
                 return affected
             except pymysql.Error as exc:
                 self._rollback_quietly()
@@ -146,11 +153,11 @@ class Database:
         if not payload:
             return 0
         with self._lock:
-            self._ensure_connection()
+            connection, cursor = self._ensure_connection()
             try:
-                affected = self.cursor.executemany(sql, payload)
-                self.connection.commit()
-                return affected
+                affected = cursor.executemany(sql, payload)
+                connection.commit()
+                return affected if affected is not None else 0
             except pymysql.Error as exc:
                 self._rollback_quietly()
                 raise DatabaseError(f"批量写入失败：{exc}", original=exc) from exc
@@ -178,16 +185,16 @@ class Database:
         原系统"查容量 -> 插预约"是两次独立提交，中间存在并发窗口，
         现在都放在同一个事务里。
         """
-        self._ensure_connection()
-        cursor = self.connection.cursor(cursor_class) if cursor_class else self.connection.cursor()
-        tx = Transaction(self.connection, cursor)
+        connection, _ = self._ensure_connection()
+        cursor = connection.cursor(cursor_class) if cursor_class else connection.cursor()
+        tx = Transaction(connection, cursor)
         try:
             with self._lock:
                 yield tx
-                self.connection.commit()
+                connection.commit()
         except Exception:
             with contextlib.suppress(Exception):
-                self.connection.rollback()
+                connection.rollback()
             raise
         finally:
             with contextlib.suppress(Exception):
@@ -214,7 +221,8 @@ class Database:
 class Transaction:
     """事务内使用的游标包装，提供与 Database 一致的调用方式。"""
 
-    def __init__(self, connection: pymysql.connections.Connection, cursor):
+    def __init__(self, connection: pymysql.connections.Connection[pymysql.cursors.DictCursor],
+                 cursor):
         self._connection = connection
         self._cursor = cursor
 

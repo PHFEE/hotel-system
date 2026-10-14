@@ -1,15 +1,5 @@
 """
 统计与看板查询。
-
-原系统管理端的"收入"是把各订单表按状态求和：
-    SELECT SUM(total_price) FROM room_order WHERE status IN ('confirmed',...)
-未收款的订单也被计入收入，账目不成立；而且这段 SQL 散在界面文件里，
-三端各写一份。
-
-现在：
-  · 收入一律来自 payment 表的真实流水（v_daily_revenue）；
-  · 订单量与状态分布来自 v_all_orders / v_service_stats；
-  · 所有查询集中在本模块，界面只负责渲染。
 """
 
 from __future__ import annotations
@@ -36,23 +26,23 @@ def overview(db: Database, day: date | None = None) -> dict:
         "departures": db.query_value(
             "SELECT COUNT(*) FROM room_order "
             "WHERE check_out_date = %s AND status = 'checked_in'", (today,), 0),
-        "rooms_total": db.query_value("SELECT COUNT(*) FROM room", 0),
+        "rooms_total": db.query_value("SELECT COUNT(*) FROM room", None, 0),
         "rooms_available": db.query_value(
-            "SELECT COUNT(*) FROM room WHERE status = 'available'", 0),
+            "SELECT COUNT(*) FROM room WHERE status = 'available'", None, 0),
         "rooms_occupied": db.query_value(
-            "SELECT COUNT(*) FROM room WHERE status = 'occupied'", 0),
+            "SELECT COUNT(*) FROM room WHERE status = 'occupied'", None, 0),
         "rooms_cleaning": db.query_value(
-            "SELECT COUNT(*) FROM room WHERE status = 'cleaning'", 0),
+            "SELECT COUNT(*) FROM room WHERE status = 'cleaning'", None, 0),
         "rooms_maintenance": db.query_value(
-            "SELECT COUNT(*) FROM room WHERE status = 'maintenance'", 0),
-        "users_total": db.query_value("SELECT COUNT(*) FROM `user`", 0),
+            "SELECT COUNT(*) FROM room WHERE status = 'maintenance'", None, 0),
+        "users_total": db.query_value("SELECT COUNT(*) FROM `user`", None, 0),
         "pending_payment": db.query_value(
             "SELECT COUNT(*) FROM v_all_orders o "
             "WHERE o.status_category <> '已取消' AND o.total_price > 0 "
             "  AND NOT EXISTS (SELECT 1 FROM payment p "
             "                  WHERE p.order_type = o.order_type "
             "                    AND p.order_id = o.order_id AND p.status = 'paid')",
-            0),
+            None, 0),
     }
 
 
@@ -60,9 +50,6 @@ def revenue_summary(db: Database, start: date | None = None,
                     end: date | None = None) -> dict:
     """
     营收汇总（只统计已支付的流水）。
-
-    原系统的"总收入"来自订单状态求和，与真实收款不符；
-    这里以 payment.status='paid' 为准。
     """
     where = ["status = 'paid'"]
     params: list = []
@@ -143,9 +130,6 @@ def room_usage(db: Database) -> list[dict]:
 def schema_objects(db: Database) -> dict:
     """
     统计数据库对象数量（表/视图/触发器/索引/外键）。
-
-    既可以在管理端"关于"页展示，也方便答辩时直观说明数据库设计
-    —— 原系统这三项都是 0。
     """
     name = db.query_value("SELECT DATABASE()", None, "hotel_booking")
     counts = {
@@ -178,11 +162,6 @@ def settlement_report(db: Database, start: date | None = None,
                       end: date | None = None) -> dict:
     """
     结账报表：以结账单（settlement）为主体做统计。
-
-    与 revenue_summary 的分工：
-      · revenue_summary 看的是"收款流水"（payment），回答"收了多少钱"；
-      · 本报表看的是"结账单"，回答"结了多少单、多少间房、谁经手、怎么结的"。
-    只统计 status='settled' 的账单；已退款账单单独计数，不计入金额。
     """
     where = ["s.status = 'settled'"]
     params: list = []

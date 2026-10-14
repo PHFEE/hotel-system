@@ -1,13 +1,5 @@
 """
 业务规则层 —— 三端界面共用的唯一业务入口。
-
-原系统把业务规则直接写在 Tkinter 回调里，三端各写一份，导致：
-  · 订单汇总逻辑重复三遍，客人端那份还用 BST 排序造成静默丢单；
-  · 状态流转没有校验，可以从"待入住"直接跳到"已退房"；
-  · 容量校验、日期校验散落在各处，且失败时抛未捕获异常。
-
-本模块把规则集中到一处，界面只负责收集输入与展示结果。
-所有校验失败统一抛 BusinessError，由界面转为提示框。
 """
 
 from __future__ import annotations
@@ -21,10 +13,6 @@ from app.ids import new_order_id, uniqueness_guard
 from app.security import hash_password, verify_password
 
 # --- 各表主键列名（订单通用操作时用） ---------------------------------
-#    原设计覆盖客房/餐饮/健身/SPA/洗衣 5 条业务线；按课程题目
-#    （选题19 宾馆客房管理系统）已收敛为客房主线，因此只剩 room 一项。
-#    "订单类型 -> (表名, 主键列)" 的映射结构保留：以后要加业务线，
-#    只需在这里登记一行，通用操作（查询/流转/取消/支付）无需改动。
 _ORDER_TABLE = {
     "room": ("room_order", "order_id"),
 }
@@ -55,13 +43,7 @@ class BusinessError(RuntimeError):
 #  输入校验工具
 # =====================================================================
 def parse_date(text: str, field: str = "日期") -> date:
-    """
-    解析 YYYY-MM-DD。
-
-    原系统直接 datetime.strptime，用户输入 "2026/5/1" 或误触键盘
-    就抛 ValueError 冲进 Tkinter，表现为程序崩溃。这里统一转成
-    友好提示。
-    """
+    """解析 YYYY-MM-DD。"""
     if not text or not str(text).strip():
         raise BusinessError(f"请填写{field}")
     raw = str(text).strip().replace("/", "-").replace(".", "-")

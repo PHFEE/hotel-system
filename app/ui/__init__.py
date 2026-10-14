@@ -13,4 +13,8 @@ Tkinter 界面层。
 任何业务规则都不允许写在此层，否则又会退回到"三端各写一份"的老问题。
 """
 
+# 真正导入子模块，使 __all__ 中列出的名字确实存在于包命名空间。
+# 这些模块只在导入时定义类/函数，不会创建窗口或建立数据库连接。
+from . import admin, base, guest, login, reception, widgets
+
 __all__ = ["widgets", "base", "login", "guest", "reception", "admin"]

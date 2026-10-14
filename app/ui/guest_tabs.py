@@ -13,6 +13,7 @@ from tkinter import ttk
 from typing import Callable
 
 from app import service
+from app.db import DatabaseError
 from app.service import BusinessError
 from app.ui.widgets import (
     CS, FONT, DataTable, DateField, DetailDialog, LabeledCombo, LabeledEntry,
@@ -406,6 +407,9 @@ class PaymentDialog(tk.Toplevel):
         except BusinessError as exc:
             self._error.set(f"⚠ {exc}")
             return
+        except DatabaseError as exc:
+            self._error.set(f"⚠ 数据库错误：{exc}")
+            return
 
         info("支付成功",
              f"流水号：{result['payment_no']}\n金额：{_fmt_money(result['amount'])}",
@@ -489,6 +493,9 @@ class ReviewDialog(tk.Toplevel):
                 rating=self.rating, content=self.content.get("1.0", "end-1c"))
         except BusinessError as exc:
             self._error.set(f"⚠ {exc}")
+            return
+        except DatabaseError as exc:
+            self._error.set(f"⚠ 数据库错误：{exc}")
             return
 
         info("评价成功", "感谢您的反馈！", parent=self.master)

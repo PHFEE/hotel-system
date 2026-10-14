@@ -256,7 +256,7 @@ class DataTable(tk.Frame):
         """
         self.clear()
         for index, row in enumerate(rows):
-            values = formatter(row) if formatter else [row.get(k, "") for k in self._keys]
+            values = list(formatter(row)) if formatter else [row.get(k, "") for k in self._keys]
             tags = ["odd" if index % 2 else "even"]
             status = tagger(row) if tagger else None
             if status and status in STATUS_COLORS:
@@ -301,7 +301,7 @@ class LabeledEntry(tk.Frame):
     """标签 + 输入框（保持原有下划线式外观）。"""
 
     def __init__(self, parent, label: str, width: int = 20,
-                 show: str | None = None, initial: str = "", bg: str = CS.BG_WHITE):
+                 show: str = "", initial: str = "", bg: str = CS.BG_WHITE):
         super().__init__(parent, bg=bg)
         tk.Label(self, text=label, font=(FONT, 10), bg=bg,
                  fg=CS.TEXT_PRIMARY).pack(anchor="w")
@@ -438,7 +438,10 @@ class ToolbarCombo(tk.Frame):
                                   font=(FONT, 10), width=width, state="readonly")
         self.combo.pack(side="left")
         if values:
-            self.var.set(initial if initial in values else values[0])
+            if initial is not None and initial in values:
+                self.var.set(initial)
+            else:
+                self.var.set(values[0])
         if on_change:
             self.combo.bind("<<ComboboxSelected>>",
                             lambda _e: on_change(self.var.get()))
@@ -461,7 +464,7 @@ class ToolbarCombo(tk.Frame):
 # =====================================================================
 #  对话框与提示
 # =====================================================================
-def center_window(window: tk.Misc, width: int | None = None,
+def center_window(window: tk.Tk | tk.Toplevel, width: int | None = None,
                   height: int | None = None) -> None:
     """把窗口/对话框居中显示（原实现在三处各写了一遍）。"""
     window.update_idletasks()
@@ -472,19 +475,30 @@ def center_window(window: tk.Misc, width: int | None = None,
     window.geometry(f"{w}x{h}+{x}+{y}")
 
 
-def info(title: str, message: str, parent=None) -> None:
-    messagebox.showinfo(title, message, parent=parent)
+def info(title: str, message: str, parent: tk.Misc | None = None) -> None:
+    if parent is None:
+        messagebox.showinfo(title, message)
+    else:
+        messagebox.showinfo(title, message, parent=parent)
 
 
-def warn(title: str, message: str, parent=None) -> None:
-    messagebox.showwarning(title, message, parent=parent)
+def warn(title: str, message: str, parent: tk.Misc | None = None) -> None:
+    if parent is None:
+        messagebox.showwarning(title, message)
+    else:
+        messagebox.showwarning(title, message, parent=parent)
 
 
-def error(title: str, message: str, parent=None) -> None:
-    messagebox.showerror(title, message, parent=parent)
+def error(title: str, message: str, parent: tk.Misc | None = None) -> None:
+    if parent is None:
+        messagebox.showerror(title, message)
+    else:
+        messagebox.showerror(title, message, parent=parent)
 
 
-def confirm(title: str, message: str, parent=None) -> bool:
+def confirm(title: str, message: str, parent: tk.Misc | None = None) -> bool:
+    if parent is None:
+        return bool(messagebox.askyesno(title, message))
     return bool(messagebox.askyesno(title, message, parent=parent))
 
 

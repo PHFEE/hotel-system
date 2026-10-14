@@ -11,7 +11,6 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- 1. 用户表
 --    password_hash 存 PBKDF2-HMAC-SHA256 加盐哈希（见 app/security.py），
---    绝不存储明文密码。
 --    is_active 支持"禁用/启用"账号，避免用 DELETE 误删历史订单。
 DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user` (
@@ -52,7 +51,6 @@ CREATE TABLE `room_type` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房型表';
 
 -- 3. 房间表
---    外键改为 RESTRICT：房型下还有房间时不允许删除房型，防止误删级联清空数据。
 DROP TABLE IF EXISTS `room`;
 CREATE TABLE `room` (
     room_id         INT             NOT NULL AUTO_INCREMENT COMMENT '房间ID',
@@ -72,13 +70,9 @@ CREATE TABLE `room` (
 -- =====================================================================
 --  三、团体与结账单
 --    建表顺序由外键依赖决定：room_order 需要引用 guest_group 与 settlement，
---    所以这两张表必须排在被引用的顺序之前。
 -- =====================================================================
 
 -- 4. 团体单表
---    题目要求 (1)「能够支持团体登记和团体结账」：
---    一张团体单下挂多张客房订单（相同的入住/离店日期），
---    团体结账时按 group_id 一次汇总收款并生成一张结账单。
 DROP TABLE IF EXISTS `guest_group`;
 CREATE TABLE `guest_group` (
     group_id        INT             NOT NULL AUTO_INCREMENT COMMENT '团体单ID',
@@ -102,9 +96,6 @@ CREATE TABLE `guest_group` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='团体登记表';
 
 -- 5. 结账单表
---    题目要求 (1)(5)：散客或团体一次结清时生成一张结账单。
---    total_amount 是**金额快照** —— 之后调价或改单都不会改动历史账单。
---    与客房订单是一对多关系（由 room_order.settlement_no 指回来）。
 DROP TABLE IF EXISTS `settlement`;
 CREATE TABLE `settlement` (
     settlement_no   VARCHAR(24)     NOT NULL                COMMENT '结账单号',
@@ -137,12 +128,7 @@ CREATE TABLE `settlement` (
 -- =====================================================================
 
 -- 6. 客房订单表
---    group_id / settlement_no 分别指回团体单与结账单，支撑
---    「团体一次登记多间房」与「一次结清多张订单」。
---    id_card 用于宾馆登记与多手段查询客人信息（题目要求 (3)）。
---    外键全部 RESTRICT：订单是账目凭据，绝不能被级联删除。
---    复合索引 (room_id, status, check_in_date, check_out_date) 直接服务
---    "查某段时间可用房间"这个最高频查询。
+
 DROP TABLE IF EXISTS `room_order`;
 CREATE TABLE `room_order` (
     order_id        VARCHAR(24)     NOT NULL                COMMENT '订单号',
@@ -183,9 +169,6 @@ CREATE TABLE `room_order` (
 -- =====================================================================
 
 -- 7. 支付流水表
---    原管理端的"收入"是把各订单表按状态求和，未收款的 'confirmed' 订单
---    也被算成收入，账目不成立。补支付表后收入从真实流水汇总。
---    order_type 仍保留 ENUM，为后续扩展业务线留位。
 DROP TABLE IF EXISTS `payment`;
 CREATE TABLE `payment` (
     payment_id      INT             NOT NULL AUTO_INCREMENT COMMENT '支付ID',
@@ -208,10 +191,6 @@ CREATE TABLE `payment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付流水表';
 
 -- 8. 评价表
---    原表无唯一约束，同一订单可被无限重复评价。补 UNIQUE(user_id, order_id, order_type)。
---    order_id 存的是其它订单表的业务主键（订单号），无法用外键表达，
---    改由触发器 BEFORE INSERT 校验其存在性（见 03_triggers.sql）。
---    order_type 同样保留 ENUM，为后续扩展业务线留位。
 DROP TABLE IF EXISTS `review`;
 CREATE TABLE `review` (
     review_id       INT             NOT NULL AUTO_INCREMENT COMMENT '评价ID',
@@ -235,10 +214,6 @@ CREATE TABLE `review` (
 -- =====================================================================
 
 -- 9. 价格与房型变更日志表
---    题目要求 (4)「操作员在密码支持下才可更改房价、房间类型、增加客房」。
---    密码校验由 app/service.py 的 Approval 机制完成（二次输入当前账号密码）；
---    本表负责**留痕**：谁、什么时候、把哪个对象的哪个字段从什么改成了什么。
---    原系统这类改动没有任何记录，出错无法追溯。
 DROP TABLE IF EXISTS `price_change_log`;
 CREATE TABLE `price_change_log` (
     log_id          INT             NOT NULL AUTO_INCREMENT COMMENT '日志ID',

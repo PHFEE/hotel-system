@@ -69,11 +69,13 @@ def _bootstrap_if_needed() -> None:
             conn.select_db(DB_CONFIG["database"])
             with conn.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM `user`")
-                users = cursor.fetchone()[0]
+                users_row = cursor.fetchone()
+                users = users_row[0] if users_row else 0
                 cursor.execute(
                     "SELECT COUNT(*) FROM information_schema.views "
                     "WHERE table_schema = %s", (DB_CONFIG["database"],))
-                views = cursor.fetchone()[0]
+                views_row = cursor.fetchone()
+                views = views_row[0] if views_row else 0
             if users == 0 or views == 0:
                 print("检测到数据库结构或基础数据不完整，正在补齐...")
                 bootstrap(conn, DEFAULT_ORDER)

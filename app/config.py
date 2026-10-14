@@ -1,12 +1,5 @@
 """
 全局配置。
-
-原系统把 MySQL 的 root 密码硬编码在 main.py 里。现在改为：
-  1. 环境变量优先（HOTEL_DB_HOST / HOTEL_DB_USER / HOTEL_DB_PASSWORD / ...）；
-  2. 其次读取项目根目录的 config.local.py（该文件加入 .gitignore，不会被提交）；
-  3. 最后回退到本地开发的默认值。
-
-这样既保留了课设"双击就能跑"的便利，又不会把口令写进版本库。
 """
 
 from __future__ import annotations

@@ -1,15 +1,5 @@
 """
 业务单号生成。
-
-原实现：前缀 + 年月日时分秒 + 2 位随机数（90 种可能），
-且 order_id 是主键、碰撞后没有任何重试 —— 同一秒内并发下单就会
-抛 IntegrityError，直接弹异常栈。
-
-改进：
-  · 时间戳精确到毫秒，尾部再加 4 位随机字符，碰撞概率降到可忽略；
-  · 仍然生成"可读单号"（便于答辩讲清编码规则），而非纯 UUID；
-  · 提供 uniqueness_guard()，在数据库层面兜底重试，
-    即使真发生碰撞也能自动换号，而不是把异常抛给用户。
 """
 
 from __future__ import annotations
@@ -34,8 +24,7 @@ def new_order_id(order_type: str, *, moment: datetime | None = None) -> str:
     """
     生成业务单号，格式：<类型前缀><YYYYMMDD><HHMMSS><毫秒3位><随机4位>
 
-    例：RM20260510143012345A7K2  —— 共 2 + 8 + 6 + 3 + 4 = 23 字符，
-    与各表 order_id VARCHAR(24) 的定义留有余量。
+    例：RM20260510143012345A7K2  —— 共 2 + 8 + 6 + 3 + 4 = 23 字符
     """
     prefix = _PREFIXES.get(order_type, "XX")
     now = moment or datetime.now()

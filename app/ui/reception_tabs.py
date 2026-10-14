@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from tkinter import ttk
 
 from app import service, stats
+from app.db import DatabaseError
 from app.service import BusinessError
 from app.ui.widgets import (
     CS, FONT, Card, DataTable, DateField, DetailDialog, LabeledCombo, LabeledEntry,
@@ -100,7 +101,7 @@ def _settle_summary(result: dict) -> str:
             f"实收金额：{_fmt_money(result['collected'])}")
 
 
-def ask_settlement_options(parent: tk.Misc, title: str,
+def ask_settlement_options(parent: tk.Tk | tk.Toplevel, title: str,
                            hint: str = "") -> tuple[str, str] | None:
     """
     弹出「结算方式 + 备注」小对话框。
@@ -407,15 +408,15 @@ class RoomsTab(ReceptionTab):
                 error_var.set(f"⚠ {exc}")
                 return
 
-            matched = [r for r in service.list_rooms(self.db, keyword=number)
-                       if r["room_number"] == number]
-            if not matched:
-                error_var.set(f"⚠ 找不到房间号「{number}」")
-                return
-            room_id = int(matched[0]["room_id"])
-            dialog.destroy()
-
             def action() -> None:
+                # 查房间、查可用房、建单全部放进守卫内：任一步失败时对话框不会
+                # 被销毁，用户已填写的姓名/电话/证件/日期都还在。
+                matched = [r for r in service.list_rooms(self.db, keyword=number)
+                           if r["room_number"] == number]
+                if not matched:
+                    raise BusinessError(f"找不到房间号「{number}」")
+                room_id = int(matched[0]["room_id"])
+
                 available = {int(r["room_id"])
                              for r in service.search_available_rooms(self.db, ci, co)}
                 if room_id not in available:
@@ -426,6 +427,7 @@ class RoomsTab(ReceptionTab):
                     check_in=ci, check_out=co, guest_name=name,
                     guest_phone=guest_phone.get().strip(),
                     id_card=id_card.get().strip())
+                dialog.destroy()
                 info("代客开单成功",
                      f"订单号：{order['order_id']}\n房间：{number}\n"
                      f"{ci} → {co}（{order['nights']} 晚）\n"
@@ -487,6 +489,9 @@ class RoomsTab(ReceptionTab):
                 service.set_room_status(self.db, room["room_id"], mapping[combo.get()])
             except BusinessError as exc:
                 error_var.set(f"⚠ {exc}")
+                return
+            except DatabaseError as exc:
+                error_var.set(f"⚠ 数据库错误：{exc}")
                 return
             info("已更新", f"房间 {room['room_number']} 状态已改为「{combo.get()}」",
                  parent=dialog)
@@ -789,19 +794,23 @@ class ReceptionOrdersTab(ReceptionTab):
         if row is None:
             warn("提示", "请先选择一条订单", parent=self.app.window)
             return
-        pairs = [("订单号", row["order_id"]), ("客人", row["username"]),
-                 ("类型", row["type_label"]), ("详情", row["detail"]),
-                 ("下单时间", _fmt_time(row["created_at"])),
-                 ("金额", _fmt_money(row["total_price"])),
-                 ("状态", row["status_label"]), ("支付", row["paid_label"])]
-        list_data = None
-        if row["order_type"] == "room":
-            paid = service.order_payment(self.db, "room", row["order_id"])
-            if paid:
-                pairs.append(("支付流水", f"{paid['payment_no']} "
-                                          f"{_fmt_money(paid['amount'])} "
-                                          f"{'已支付' if paid['status'] == 'paid' else '已退款'}"))
-        DetailDialog(self.app.window, "订单详情", pairs, list_data=list_data)
+
+        def action() -> None:
+            pairs = [("订单号", row["order_id"]), ("客人", row["username"]),
+                     ("类型", row["type_label"]), ("详情", row["detail"]),
+                     ("下单时间", _fmt_time(row["created_at"])),
+                     ("金额", _fmt_money(row["total_price"])),
+                     ("状态", row["status_label"]), ("支付", row["paid_label"])]
+            list_data = None
+            if row["order_type"] == "room":
+                paid = service.order_payment(self.db, "room", row["order_id"])
+                if paid:
+                    pairs.append(("支付流水", f"{paid['payment_no']} "
+                                              f"{_fmt_money(paid['amount'])} "
+                                              f"{'已支付' if paid['status'] == 'paid' else '已退款'}"))
+            DetailDialog(self.app.window, "订单详情", pairs, list_data=list_data)
+
+        self.app.run_guarded(action)
 
     # --- 状态推进 -----------------------------------------------------
     NEXT_STATUS = {
@@ -840,10 +849,13 @@ class ReceptionOrdersTab(ReceptionTab):
         tk.Label(dialog, text="请选择要推进到的状态：", font=(FONT, 10),
                  bg=CS.BG_WHITE, fg=CS.TEXT_SECONDARY).pack()
 
+        def choose(target: str, label: str) -> None:
+            dialog.destroy()
+            self._do_advance(row, target, label)
+
         for label, target in options:
             RoundedButton(dialog, text=label, width=160, height=34, radius=7,
-                          command=lambda t=target, l=label: (dialog.destroy(),
-                                                             self._do_advance(row, t, l))
+                          command=lambda t=target, l=label: choose(t, l)
                           ).pack(pady=4)
         RoundedButton(dialog, text="取消", width=90, height=30, radius=6,
                       color=CS.NEUTRAL, hover_color=CS.NEUTRAL_DARK,
@@ -895,12 +907,10 @@ class ReceptionOrdersTab(ReceptionTab):
             info("提示", "该订单金额为 0，无需收款", parent=self.app.window)
             return
 
-        user_id = service.order_owner_id(self.db, row["order_type"], row["order_id"])
-        if not user_id:
-            warn("提示", "无法确定该订单的所属用户", parent=self.app.window)
-            return
-
         def action() -> None:
+            user_id = service.order_owner_id(self.db, row["order_type"], row["order_id"])
+            if not user_id:
+                raise BusinessError("无法确定该订单的所属用户")
             result = service.pay_order(
                 self.db, order_type=row["order_type"], order_id=row["order_id"],
                 user_id=int(user_id), method="cash")

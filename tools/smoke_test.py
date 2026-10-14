@@ -311,8 +311,10 @@ def run(db: Database, state: dict) -> None:  # noqa: C901  （线性书写，便
     check("密码以 pbkdf2_sha256 哈希存储",
           bool(row) and row["password_hash"].startswith("pbkdf2_sha256$"))
     check("哈希不含明文片段", bool(row) and "admin123" not in row["password_hash"])
-    check("正确密码校验通过", verify_password("admin123", row["password_hash"]))
-    check("错误密码校验失败", not verify_password("admin1234", row["password_hash"]))
+    # row 为 None（账号缺失）时用空串，让下面的校验如实判为失败而不是抛异常
+    password_hash = row["password_hash"] if row else ""
+    check("正确密码校验通过", verify_password("admin123", password_hash))
+    check("错误密码校验失败", not verify_password("admin1234", password_hash))
     check("相同密码两次哈希不同（加盐生效）",
           hash_password("same") != hash_password("same"))
 
@@ -386,7 +388,7 @@ def run(db: Database, state: dict) -> None:  # noqa: C901  （线性书写，便
     created_orders.append(tamper_id)
     touched_rooms.add(tamper_room["room_id"])
     tampered = db.query_one("SELECT nights, total_price FROM room_order WHERE order_id = %s",
-                            (tamper_id,))
+                            (tamper_id,)) or {}
     check("界面传错金额/晚数无效（触发器按当前房价覆盖）",
           abs(float(tampered["total_price"]) - float(tamper_room["price"]) * 3) < 0.01
           and int(tampered["nights"]) == 3,
@@ -1238,7 +1240,7 @@ def run(db: Database, state: dict) -> None:  # noqa: C901  （线性书写，便
     # 注意 resource_update 是按整行提交的（未给出的可编辑字段会写回 NULL），
     # 所以每次调用都要把完整字段填齐，否则会被 NOT NULL 约束挡在前面，
     # 测不到"密码支持"这一层。
-    rt_before = db.query_one("SELECT * FROM room_type WHERE type_id = 1")
+    rt_before = db.query_one("SELECT * FROM room_type WHERE type_id = 1") or {}
     baseline_price = float(rt_before["price"])
     price_probe = f"{baseline_price + 30:.2f}"
 
